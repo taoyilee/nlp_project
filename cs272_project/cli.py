@@ -1,5 +1,6 @@
 """Console script for cs272_project."""
 import sys
+
 import click
 
 
