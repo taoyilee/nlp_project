@@ -30,11 +30,19 @@ Quick Start
 -------------
 Replication Only
 ======================
+Following the steps below to setup training environment
 
 .. code-block:: bash
 
+    mkdir work_directory
+    cd work_directory
+    # create virtual environment under work_directory, naming it to "venv"
+    python -m venv venv
+    source venv/bin/activate
+    # install the package
     pip install cs272-project
-    python cs272_project/cli.py
+    # write configuration file to a working directory
+    cs272_project_cli write-config --outfile /home/tylee/PycharmProjects/nlp_workspace
 
 Development
 ======================
