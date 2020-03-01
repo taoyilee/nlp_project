@@ -10,3 +10,9 @@ twine==1.14.0
 Click==7.0
 pytest==4.6.5
 pytest-runner==5.1
+torch==1.4.0
+transformers==2.4.1
+youtokentome==1.0.6
+tqdm==4.42.1
+configobj==5.0.6
+tensorboard==2.1.0'
