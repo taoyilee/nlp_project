@@ -58,15 +58,8 @@ def cli(debug, config=None):
 @click.option('--model', default="gpt2", help='Model Name',
               type=click.Choice(['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], case_sensitive=False))
 def fine_tune(model="gpt2"):
-    from cs272_project.fine_tuning import main
-    click.echo(f'writing output to {CONFIG.default.output_dir}')
-    main(["--output_dir", CONFIG.default.output_dir,
-          "--model_type", model,
-          "--model_name_or_path", model,
-          "--do_train",
-          "--per_gpu_train_batch_size", "1",
-          "--per_gpu_eval_batch_size", "1",
-          "--do_eval"])
+    from cs272_project.api import fine_tune
+    fine_tune(CONFIG, model)
 
 
 @cli.command()  # @cli, not @click!
