@@ -523,6 +523,8 @@ def main(argv=sys.argv):
 
     logger.info("Training/evaluation parameters %s", args)
 
+    tokenizer.add_special_tokens({'sep_token': '[SEP]', 'cls_token': '[CLS]'})
+    model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
     # Training
     if args.do_train:
         args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
@@ -536,9 +538,7 @@ def main(argv=sys.argv):
         logger.info("Saving model checkpoint to %s", args.output_dir)
         # Save a trained model, configuration and tokenizer using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
-        model_to_save = (
-            model.module if hasattr(model, "module") else model
-        )  # Take care of distributed/parallel training
+        model_to_save = model
         model_to_save.save_pretrained(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
 
