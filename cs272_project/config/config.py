@@ -31,6 +31,9 @@ class DefaultSection:
     def output_dir(self) -> str:
         return self.config_obj["output_dir"]
 
+    def __repr__(self):
+        return f"output_dir = {self.output_dir}"
+
 
 class WikiTextSection:
     def __init__(self, config_obj):
@@ -66,3 +69,6 @@ class Configuration:
     @property
     def wikitext(self):
         return WikiTextSection(self.config_obj["WikiText-2"])
+
+    def __repr__(self):
+        return f"[DEFAULT]\n{str(self.default)}"
