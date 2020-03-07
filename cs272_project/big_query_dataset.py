@@ -33,7 +33,7 @@ class BigQueryDataset(Dataset):
 
     def __init__(self, tokenizer: PreTrainedTokenizer, project_name="focus-empire-270208", table_name="asnq.train",
                  batch_size=32, block_size=512):
-        print(f"Creating features from table {project_name}.{table_name}")
+        print(f"Creating features from table {project_name}.{table_name} batch_size = {batch_size}")
 
         self.tokenizer = tokenizer
         self.project_name = project_name
@@ -72,4 +72,4 @@ class BigQueryDataset(Dataset):
         inputs = list(map(format_string, rows.iterrows()))
         inputs = list(map(tokenize, inputs))
 
-        return collate(inputs), torch.tensor(rows['label'])
+        return collate(inputs), torch.tensor(rows['label'] == 4, dtype=torch.long)

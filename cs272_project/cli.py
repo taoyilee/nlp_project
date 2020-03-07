@@ -67,8 +67,7 @@ def fine_tune(model="gpt2"):
           "--do_train",
           "--per_gpu_train_batch_size", "1",
           "--per_gpu_eval_batch_size", "1",
-          "--train_data_file", CONFIG.wikitext.train_file,
-          "--do_eval", "--eval_data_file", CONFIG.wikitext.test_file])
+          "--do_eval"])
 
 
 @cli.command()  # @cli, not @click!
