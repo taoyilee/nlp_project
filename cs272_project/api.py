@@ -21,13 +21,13 @@
 #  SOFTWARE.
 
 
-def fine_tune(config, model="gpt2"):
+def fine_tune(config, model="gpt2", batch_size=32):
     from cs272_project.fine_tuning import main
     print(f'writing output to {config.default.output_dir}')
     main(["--output_dir", config.default.output_dir,
           "--model_type", model,
           "--model_name_or_path", model,
           "--do_train",
-          "--per_gpu_train_batch_size", "1",
-          "--per_gpu_eval_batch_size", "1",
+          "--per_gpu_train_batch_size", f"{batch_size}",
+          "--per_gpu_eval_batch_size", f"{batch_size}",
           "--do_eval"])

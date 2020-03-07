@@ -57,9 +57,10 @@ def cli(debug, config=None):
 @cli.command()  # @cli, not @click!
 @click.option('--model', default="gpt2", help='Model Name',
               type=click.Choice(['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], case_sensitive=False))
-def fine_tune(model="gpt2"):
+@click.option('--batch-size', default=4, help='Batch Size')
+def fine_tune(model="gpt2", batch_size=4):
     from cs272_project.api import fine_tune
-    fine_tune(CONFIG, model)
+    fine_tune(CONFIG, model, batch_size=batch_size)
 
 
 @cli.command()  # @cli, not @click!
