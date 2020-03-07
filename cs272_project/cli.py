@@ -65,6 +65,8 @@ def fine_tune(model="gpt2"):
           "--model_type", model,
           "--model_name_or_path", model,
           "--do_train",
+          "--per_gpu_train_batch_size", "1",
+          "--per_gpu_eval_batch_size", "1",
           "--train_data_file", CONFIG.wikitext.train_file,
           "--do_eval", "--eval_data_file", CONFIG.wikitext.test_file])
 

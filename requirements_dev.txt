@@ -10,3 +10,5 @@ twine==1.14.0
 Click==7.0
 pytest==4.6.5
 pytest-runner==5.1
+google-cloud-bigquery==1.24.0
+pandas==1.0.1

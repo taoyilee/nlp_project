@@ -31,7 +31,7 @@ with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
 requirements = ['Click>=7.0', 'torch==1.4.0', 'transformers==2.4.1', 'youtokentome==1.0.6', 'tqdm==4.42.1',
-                'configobj==5.0.6','tensorboard==2.1.0']
+                'configobj==5.0.6', 'tensorboard==2.1.0', 'google-cloud-bigquery==1.24.0', 'pandas==1.0.1']
 
 setup_requirements = ['pytest-runner', ]
 
