@@ -529,7 +529,10 @@ def main(argv=sys.argv):
     if args.do_train:
         args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, batch_size=args.train_batch_size)
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+        try:
+            global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+        except RuntimeError:
+            torch.cuda.empty_cache()
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     if args.do_train:

@@ -21,7 +21,7 @@
 #  SOFTWARE.
 
 
-def fine_tune(config, model="gpt2", batch_size=32):
+def fine_tune(config, model="gpt2", batch_size=4):
     from cs272_project.fine_tuning import main
     print(f'writing output to {config.default.output_dir}')
     main(["--output_dir", config.default.output_dir,
