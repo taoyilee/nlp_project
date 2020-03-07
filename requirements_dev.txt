@@ -18,3 +18,5 @@ youtokentome==1.0.6
 tqdm==4.42.1
 tensorboard==2.1.0
 configobj==5.0.6
+google-auth==1.11.2
+pyarrow==0.16.0

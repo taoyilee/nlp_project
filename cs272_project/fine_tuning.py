@@ -533,6 +533,7 @@ def main(argv=sys.argv):
             global_step, tr_loss = train(args, train_dataset, model, tokenizer)
         except RuntimeError:
             torch.cuda.empty_cache()
+            raise
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     if args.do_train:
