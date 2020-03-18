@@ -19,26 +19,36 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+from glob import glob
+from pathlib import Path
 
 
 def fine_tune(config, model="gpt2", batch_size=4, train_tsv=None, dev_tsv=None):
     from cs272_project.fine_tuning import main
-    print(f'writing output to {config.default.output_dir}')
+    output_dir = Path(config.default.output_dir)
+    existing_dirs = glob(str(output_dir / "exp_*"))
+
+    if not existing_dirs:
+        last_index = 0
+    else:
+        existing_dirs.sort()
+        last_index = int(Path(existing_dirs[-1]).name.replace("exp_", ""))
+
+    output_dir = output_dir / f"exp_{last_index + 1:05d}"
+    print(f'writing output to {output_dir}')
     if train_tsv is not None and dev_tsv is not None:
-        main(["--output_dir", config.default.output_dir,
-              "--overwrite_output_dir",
+        main(["--output_dir", str(output_dir),
               "--model_type", model,
               "--train_tsv", train_tsv,
               "--dev_tsv", dev_tsv,
-              "--num_train_epochs", "10",
+              "--num_train_epochs", "4",
               "--model_name_or_path", model,
               "--per_gpu_train_batch_size", f"{batch_size}",
               "--per_gpu_eval_batch_size", f"{batch_size}"])
     else:
         main(["--output_dir", config.default.output_dir,
               "--model_type", model,
-              "--overwrite_output_dir",
-              "--num_train_epochs", "10",
+              "--num_train_epochs", "4",
               "--model_name_or_path", model,
               "--per_gpu_train_batch_size", f"{batch_size}",
               "--per_gpu_eval_batch_size", f"{batch_size}"])

@@ -49,7 +49,7 @@ def asnq_subsampler(dataset_dir, outdir, samples_each_category=500):
     return output_file
 
 
-def dataset_split(tsv_file, training_ratio=0.8, dev_ratio=0.1):
+def dataset_split(tsv_file, training_ratio=1.0, dev_ratio=0.0):
     tsv_df = pd.read_csv(tsv_file, delimiter="\t", names=['question', 'context', 'category'], index_col=0, header=0)
     training_samples = int(len(tsv_df) * training_ratio)
     development_samples = int(len(tsv_df) * dev_ratio)
@@ -60,6 +60,8 @@ def dataset_split(tsv_file, training_ratio=0.8, dev_ratio=0.1):
     print(f"Train: {len(train_df)} {100 * len(train_df) / len(tsv_df):.2f}%")
     print(f"Dev: {len(dev_df)} {100 * len(dev_df) / len(tsv_df):.2f}%")
     print(f"Test: {len(test_df)} {100 * len(test_df) / len(tsv_df):.2f}%")
+
     train_df.to_csv(tsv_file.parent / "train.tsv", sep="\t")
-    dev_df.to_csv(tsv_file.parent / "dev.tsv", sep="\t")
-    test_df.to_csv(tsv_file.parent / "test.tsv", sep="\t")
+    if training_ratio < 1.0:
+        dev_df.to_csv(tsv_file.parent / "dev.tsv", sep="\t")
+        test_df.to_csv(tsv_file.parent / "test.tsv", sep="\t")

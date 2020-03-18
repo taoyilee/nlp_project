@@ -259,11 +259,11 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 
     eval_lm_loss = 0.0
     eval_mc_loss = 0.0
-    nb_eval_steps = 0
+    nb_lm_eval_steps = 0
     nb_mc_eval_steps = 0
     model.eval()
-
-    for batch_lm, mc_labels in tqdm(eval_dataloader, desc="Evaluating"):
+    eval_iters = tqdm(eval_dataloader, desc="Evaluating", dynamic_ncols=True)
+    for batch_lm, mc_labels in eval_iters:
         inputs, lm_labels = batch_lm, batch_lm
         inputs = inputs.to(args.device)
         lm_labels = lm_labels.to(args.device)
@@ -274,21 +274,28 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
             lm_loss = torch.where(mc_labels == 3, outputs[0], torch.zeros_like(outputs[0]))
             mc_loss = outputs[1]
             eval_mc_loss += mc_loss.mean().item()
-            nb_eval_steps += 1
+            nb_mc_eval_steps += 1
             if lm_loss.mean().item() != 0.0:
                 eval_lm_loss += lm_loss.mean().item()
-                nb_mc_eval_steps += 1
+                nb_lm_eval_steps += 1
 
-    result = {"perplexity": 2 ** torch.tensor(eval_lm_loss / nb_mc_eval_steps).mean().item(),
-              "lm_loss": eval_lm_loss / nb_mc_eval_steps,
-              "mc_loss": eval_mc_loss / nb_eval_steps}
+        if nb_lm_eval_steps == 0:
+            mean_lm_loss = 0
+        else:
+            mean_lm_loss = eval_lm_loss / nb_lm_eval_steps
+        mean_mc_loss = eval_mc_loss / nb_mc_eval_steps
+        ppl = 2 ** mean_lm_loss
 
-    output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
-    with open(output_eval_file, "w") as writer:
-        logger.info("***** Eval results {} *****".format(prefix))
-        for key in sorted(result.keys()):
-            logger.info("  %s = %s", key, str(result[key]))
-            writer.write("%s = %s\n" % (key, str(result[key])))
+        result = {"perplexity": ppl, "lm_loss": mean_lm_loss, "mc_loss": mean_mc_loss}
+
+        output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
+        eval_stat = f"(eval) lm_loss: {result['lm_loss']:.3f}" \
+                    f" mc_loss: {result['mc_loss']:.3f}" \
+                    f" ppl: {result['perplexity']:.3f}"
+        eval_iters.set_description(eval_stat)
+        with open(output_eval_file, "w") as writer:
+            for key in sorted(result.keys()):
+                writer.write("%s = %s\n" % (key, str(result[key])))
 
     return result
 

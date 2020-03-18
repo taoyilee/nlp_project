@@ -39,6 +39,8 @@ class TSVDataset(Dataset):
 
         self.tokenizer = tokenizer
         self._df = pd.read_csv(tsv_file, delimiter="\t", dtype={"category": int}, index_col=0)
+        if len(self._df) > 100000:
+            self._df = self._df.sample(frac=0.006)
         self.block_size = block_size
         self._ohe = OneHotEncoder(sparse=False)
         self._ohe.fit(self._df["category"].to_numpy().reshape(-1, 1))

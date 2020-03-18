@@ -61,7 +61,7 @@ def cli(debug, config=None):
 def subsample(dataset, outdir, samples_each_category=100):
     from cs272_project.dataset.subsample import asnq_subsampler, dataset_split
     tsv_file = asnq_subsampler(dataset, outdir, samples_each_category)
-    dataset_split(tsv_file, training_ratio=0.8, dev_ratio=0.1)
+    dataset_split(tsv_file, training_ratio=1.0, dev_ratio=0.0)
 
 
 @cli.command()  # @cli, not @click!
