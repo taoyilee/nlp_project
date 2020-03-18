@@ -63,6 +63,13 @@ def subsample(dataset, outdir, samples_each_category=100):
     tsv_file = asnq_subsampler(dataset, outdir, samples_each_category)
     dataset_split(tsv_file, training_ratio=1.0, dev_ratio=0.0)
 
+@cli.command()
+@click.option('--tensorboard-dir', help='tensorboard log dir')
+@click.option('--plot-dir', help='plot dir')
+def report(tensorboard_dir,plot_dir):
+    from cs272_project.reporting.plot_results import plot_learning_curves
+    plot_learning_curves(tensorboard_dir,plot_dir)
+
 
 @cli.command()  # @cli, not @click!
 @click.option('--train-tsv', help='TSV formatted training dataset')

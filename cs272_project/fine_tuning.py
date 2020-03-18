@@ -28,6 +28,7 @@ import random
 import re
 import shutil
 import sys
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -102,7 +103,7 @@ def _rotate_checkpoints(args, checkpoint_prefix="checkpoint", use_mtime=False) -
 
 
 def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> Tuple[int, float]:
-    tb_writer = SummaryWriter()
+    tb_writer = SummaryWriter(log_dir=str(Path(args.output_dir).parent / "tensorboard" / Path(args.output_dir).name))
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=None)
 
@@ -191,8 +192,15 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                 mc_losses.pop(0)
             mc_losses.append(mc_loss.item())
 
-            mean_lm_loss = np.mean(lm_losses)
-            train_info = f"#{step:3d} lm_loss: {mean_lm_loss:6.4f} mc_loss: {np.mean(mc_losses):6.4f} ppl: {2 ** mean_lm_loss:6.2f}"
+            mean_lm_loss = np.mean(lm_losses) if lm_losses else 0
+            train_results = {"lm_loss": mean_lm_loss, "mc_loss": np.mean(mc_losses), "ppl": 2 ** mean_lm_loss}
+            for key, value in train_results.items():
+                if value < 10:
+                    tb_writer.add_scalar("train_{}".format(key), value, global_step)
+
+            train_info = f"#{step:3d} lm_loss: {train_results['lm_loss']:6.4f} " \
+                         f"mc_loss: {train_results['mc_loss']:6.4f}" \
+                         f" ppl: {train_results['ppl']:6.2f}"
             epoch_iterator.set_description(train_info)
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
@@ -209,6 +217,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
                     logging_loss = tr_loss
+                    tb_writer.flush()
 
                 if args.save_steps > 0 and global_step % args.save_steps == 0:
                     save_checkpoint(args, global_step, model, optimizer, scheduler, tokenizer)
