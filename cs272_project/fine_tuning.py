@@ -195,8 +195,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             mean_lm_loss = np.mean(lm_losses) if lm_losses else 0
             train_results = {"lm_loss": mean_lm_loss, "mc_loss": np.mean(mc_losses), "ppl": 2 ** mean_lm_loss}
             for key, value in train_results.items():
-                if value < 10:
-                    tb_writer.add_scalar("train_{}".format(key), value, global_step)
+                tb_writer.add_scalar("train_{}".format(key), value, global_step)
 
             train_info = f"#{step:3d} lm_loss: {train_results['lm_loss']:6.4f} " \
                          f"mc_loss: {train_results['mc_loss']:6.4f}" \

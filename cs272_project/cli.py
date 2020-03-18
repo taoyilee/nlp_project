@@ -63,6 +63,14 @@ def subsample(dataset, outdir, samples_each_category=100):
     tsv_file = asnq_subsampler(dataset, outdir, samples_each_category)
     dataset_split(tsv_file, training_ratio=1.0, dev_ratio=0.0)
 
+@cli.command()  # @cli, not @click!
+@click.option('--infile', help='*.tsv file')
+@click.option('--outfile', help='Output directory')
+def normalize_wikiqa(infile, outfile):
+    from cs272_project.dataset.normalize_wikiqa import normalize_wikiqa
+    normalize_wikiqa(infile, outfile)
+
+
 @cli.command()
 @click.option('--tensorboard-dir', help='tensorboard log dir')
 @click.option('--plot-dir', help='plot dir')

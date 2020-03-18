@@ -29,6 +29,10 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 # https://gist.github.com/tomrunia/1e1d383fb21841e8f144
 
 def plot_learning_curves(log_dir, plot_dir):
+    log_name = Path(log_dir)
+    plot_dir = Path(plot_dir)
+    plot_dir.mkdir(exist_ok=True)
+    start_idx = 200
     event_acc = EventAccumulator(log_dir)
     event_acc.Reload()
     # Show all tags in the log file
@@ -43,7 +47,7 @@ def plot_learning_curves(log_dir, plot_dir):
 
     x = [t.step for t in train_lm_loss]
     y = [t.value for t in train_lm_loss]
-    plt.plot(x[2:], y[2:], label="Train")
+    plt.plot(x[start_idx:], y[start_idx:], label="Train")
     x = [t.step for t in eval_lm_loss]
     y = [t.value for t in eval_lm_loss]
     plt.plot(x, y, label="Dev")
@@ -54,25 +58,30 @@ def plot_learning_curves(log_dir, plot_dir):
     plt.ylabel("Cross Entropy Loss")
     plt.ylim([1, 5])
     plt.tight_layout()
-    plt.savefig(Path(plot_dir) / "lm_loss.png")
-    plt.savefig(Path(plot_dir) / "lm_loss.pdf")
+    plt.savefig(plot_dir / f"{log_name.name}_lm_loss.png")
+    plt.savefig(plot_dir / f"{log_name.name}_lm_loss.pdf")
 
     plt.figure()
+    fig, ax1 = plt.subplots()
+    start_idx_as2 = 10
     x = [t.step for t in train_mc_loss]
     y = [t.value for t in train_mc_loss]
-    plt.plot(x, y, label="Train")
+    plt.plot(x[start_idx_as2:], y[start_idx_as2:], label="Train", color="C0")
     x = [t.step for t in eval_mc_loss]
     y = [t.value for t in eval_mc_loss]
-    plt.plot(x, y, label="Dev")
-    plt.legend()
-    plt.grid()
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    ax2.plot(x, y, label="Dev", color="C1")
+    ax1.set_ylabel('Train Cross Entropy Loss', color="C0")  # we already handled the x-label with ax1
+    ax2.set_ylabel('Dev Cross Entropy Loss', color="C1")  # we already handled the x-label with ax1
+    # ax1.legend()
+    ax1.grid(True)
     # plt.title("AS2 Classification Head Loss")
-    plt.xlabel("Iteration #")
-    plt.ylabel("Cross Entropy Loss")
+    ax1.set_xlabel("Iteration #")
+    # plt.ylabel("Cross Entropy Loss")
     # plt.ylim([0, 2])
     plt.tight_layout()
-    plt.savefig(Path(plot_dir) / "mc_loss.png")
-    plt.savefig(Path(plot_dir) / "mc_loss.pdf")
+    plt.savefig(plot_dir / f"{log_name.name}_mc_loss.png")
+    plt.savefig(plot_dir / f"{log_name.name}_mc_loss.pdf")
     plt.close()
 
     plt.figure()
@@ -88,13 +97,13 @@ def plot_learning_curves(log_dir, plot_dir):
     plt.ylabel("Perplexity")
     plt.ylim([2, 20])
     plt.tight_layout()
-    plt.savefig(Path(plot_dir) / "perplexity.png")
-    plt.savefig(Path(plot_dir) / "perplexity.pdf")
+    plt.savefig(plot_dir / f"{log_name.name}_perplexity.png")
+    plt.savefig(plot_dir / f"{log_name.name}_perplexity.pdf")
 
     plt.close()
     plt.figure()
     ratio = 1
-    start_idx = 200
+
     x = np.array([t.step for t in train_lm_loss]) + np.array([t.step for t in train_mc_loss])
     y = np.array([t.value for t in train_lm_loss]) * ratio + np.array([t.value for t in train_mc_loss])
 
@@ -102,7 +111,7 @@ def plot_learning_curves(log_dir, plot_dir):
     x = np.array([t.step for t in eval_lm_loss]) + np.array([t.step for t in eval_mc_loss])
     y = np.array([t.value for t in eval_lm_loss]) * ratio + np.array([t.value for t in eval_mc_loss])
     y_min = np.argmin(y)
-    plt.plot(x, y, label="Dev")
+    plt.plot(x[2:], y[2:], label="Dev")
     plt.scatter(x[y_min], y[y_min], label="Dev (min)", marker="x")
     plt.text(x[y_min], y[y_min], f"Iter {x[y_min]}")
     plt.legend()
@@ -112,5 +121,5 @@ def plot_learning_curves(log_dir, plot_dir):
     plt.xlabel("Iteration #")
     plt.ylabel("Cross Entropy Loss")
     plt.tight_layout()
-    plt.savefig(Path(plot_dir) / "tot_loss.png")
-    plt.savefig(Path(plot_dir) / "tot_loss.pdf")
+    plt.savefig(Path(plot_dir) / f"{log_name.name}_tot_loss.png")
+    plt.savefig(Path(plot_dir) / f"{log_name.name}_tot_loss.pdf")
