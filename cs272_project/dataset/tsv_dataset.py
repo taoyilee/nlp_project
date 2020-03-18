@@ -63,6 +63,5 @@ class TSVDataset(Dataset):
 
         inputs = list(map(format_string, rows.iterrows()))
         inputs = list(map(tokenize, inputs))
-        # label_tensor = torch.tensor(self._ohe.transform(rows['category'].to_numpy().reshape(-1, 1)), dtype=torch.long)
         label_tensor = torch.tensor(rows['category'].to_numpy() - 1, dtype=torch.long)
         return collate(inputs), label_tensor

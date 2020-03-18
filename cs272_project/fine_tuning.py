@@ -1,4 +1,3 @@
-# coding=utf-8
 #  MIT License
 #  #
 #  Copyright (c) 2020, Michael Tao-Yi Lee
@@ -20,22 +19,6 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Fine-tuning the library models for language modeling on a text file (GPT, GPT-2).
-GPT and GPT-2 are fine-tuned using a causal language modeling (CLM) loss
-"""
 
 import argparse
 import glob
@@ -53,7 +36,6 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
 from transformers import (
-    WEIGHTS_NAME,
     AdamW,
     GPT2Config,
     GPT2LMHeadModel,
@@ -108,7 +90,6 @@ def _rotate_checkpoints(args, checkpoint_prefix="checkpoint", use_mtime=False) -
     if args.save_total_limit <= 0:
         return
 
-    # Check if we should delete older checkpoint(s)
     checkpoints_sorted = _sorted_checkpoints(args, checkpoint_prefix, use_mtime)
     if len(checkpoints_sorted) <= args.save_total_limit:
         return
@@ -121,8 +102,6 @@ def _rotate_checkpoints(args, checkpoint_prefix="checkpoint", use_mtime=False) -
 
 
 def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> Tuple[int, float]:
-    """ Train the model """
-
     tb_writer = SummaryWriter()
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=None)
@@ -133,7 +112,6 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
     else:
         t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
-    # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
@@ -147,13 +125,11 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
     )
 
-    # Check if saved optimizer or scheduler states exist
     if (
         args.model_name_or_path
         and os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt"))
         and os.path.isfile(os.path.join(args.model_name_or_path, "scheduler.pt"))
     ):
-        # Load in optimizer and scheduler states
         optimizer.load_state_dict(torch.load(os.path.join(args.model_name_or_path, "optimizer.pt")))
         scheduler.load_state_dict(torch.load(os.path.join(args.model_name_or_path, "scheduler.pt")))
 
@@ -168,87 +144,74 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
 
     global_step = 0
     epochs_trained = 0
-    steps_trained_in_current_epoch = 0
-    # Check if continuing training from a checkpoint
+
     if args.model_name_or_path and os.path.exists(args.model_name_or_path):
         try:
-            # set global_step to gobal_step of last saved checkpoint from model path
+
             checkpoint_suffix = args.model_name_or_path.split("-")[-1].split("/")[0]
             global_step = int(checkpoint_suffix)
             epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
-            steps_trained_in_current_epoch = global_step % (len(train_dataloader) // args.gradient_accumulation_steps)
 
             logger.info("  Continuing training from checkpoint, will skip to saved global_step")
             logger.info("  Continuing training from epoch %d", epochs_trained)
             logger.info("  Continuing training from global step %d", global_step)
-            logger.info("  Will skip the first %d steps in the first epoch", steps_trained_in_current_epoch)
         except ValueError:
             logger.info("  Starting fine-tuning.")
 
     tr_loss, logging_loss = 0.0, 0.0
 
-    model_to_resize = model.module if hasattr(model, "module") else model  # Take care of distributed/parallel training
+    model_to_resize = model.module if hasattr(model, "module") else model
     model_to_resize.resize_token_embeddings(len(tokenizer))
 
     model.zero_grad()
     train_iterator = trange(epochs_trained, int(args.num_train_epochs), desc="Epoch")
-    set_seed(args)  # Added here for reproducibility
+    set_seed(args)
+    lm_losses = []
+    mc_losses = []
     for _ in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration")
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration", dynamic_ncols=True)
         for step, (batch_lm, mc_labels) in enumerate(epoch_iterator):
-
-            # Skip past any already trained steps if resuming training
-            if steps_trained_in_current_epoch > 0:
-                steps_trained_in_current_epoch -= 1
-                continue
-
             inputs, lm_labels = batch_lm, batch_lm
             inputs = inputs.to(args.device)
             lm_labels = lm_labels.to(args.device)
             mc_labels = mc_labels.to(args.device)
             model.train()
             outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
+            lm_loss = torch.where(mc_labels == 3, outputs[0], torch.zeros_like(outputs[0]))
 
-            loss = outputs[0] * torch.tensor(mc_labels == 4) + outputs[1]  # LM_LOSS + MC_LOSS
+            mc_loss = outputs[1]
+            loss = lm_loss + mc_loss
             loss.backward()
 
+            if lm_loss.item() != 0.0:
+                if len(lm_losses) > 100:
+                    lm_losses.pop(0)
+                lm_losses.append(lm_loss.item())
+            if len(mc_losses) > 100:
+                mc_losses.pop(0)
+            mc_losses.append(mc_loss.item())
+
+            mean_lm_loss = np.mean(lm_losses)
+            train_info = f"#{step:3d} lm_loss: {mean_lm_loss:6.4f} mc_loss: {np.mean(mc_losses):6.4f} ppl: {2 ** mean_lm_loss:6.2f}"
+            epoch_iterator.set_description(train_info)
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                 optimizer.step()
-                scheduler.step()  # Update learning rate schedule
+                scheduler.step()
                 model.zero_grad()
                 global_step += 1
 
                 if args.logging_steps > 0 and global_step % args.logging_steps == 0:
-                    # Log metrics
-                    if args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
-                        results = evaluate(args, model, tokenizer)
-                        for key, value in results.items():
-                            tb_writer.add_scalar("eval_{}".format(key), value, global_step)
+                    results = evaluate(args, model, tokenizer)
+                    for key, value in results.items():
+                        tb_writer.add_scalar("eval_{}".format(key), value, global_step)
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
                     logging_loss = tr_loss
 
                 if args.save_steps > 0 and global_step % args.save_steps == 0:
-                    checkpoint_prefix = "checkpoint"
-                    # Save model checkpoint
-                    output_dir = os.path.join(args.output_dir, "{}-{}".format(checkpoint_prefix, global_step))
-                    os.makedirs(output_dir, exist_ok=True)
-                    model_to_save = (
-                        model.module if hasattr(model, "module") else model
-                    )  # Take care of distributed/parallel training
-                    model_to_save.save_pretrained(output_dir)
-                    tokenizer.save_pretrained(output_dir)
-
-                    torch.save(args, os.path.join(output_dir, "training_args.bin"))
-                    logger.info("Saving model checkpoint to %s", output_dir)
-
-                    _rotate_checkpoints(args, checkpoint_prefix)
-
-                    torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                    torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-                    logger.info("Saving optimizer and scheduler states to %s", output_dir)
+                    save_checkpoint(args, global_step, model, optimizer, scheduler, tokenizer)
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
@@ -263,8 +226,24 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
     return global_step, tr_loss / global_step
 
 
+def save_checkpoint(args, global_step, model, optimizer, scheduler, tokenizer):
+    checkpoint_prefix = "checkpoint"
+    output_dir = os.path.join(args.output_dir, "{}-{}".format(checkpoint_prefix, global_step))
+    os.makedirs(output_dir, exist_ok=True)
+    model_to_save = (
+        model.module if hasattr(model, "module") else model
+    )
+    model_to_save.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    torch.save(args, os.path.join(output_dir, "training_args.bin"))
+    logger.info("Saving model checkpoint to %s", output_dir)
+    _rotate_checkpoints(args, checkpoint_prefix)
+    torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+    torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+    logger.info("Saving optimizer and scheduler states to %s", output_dir)
+
+
 def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefix="") -> Dict:
-    # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_output_dir = args.output_dir
     os.makedirs(eval_output_dir, exist_ok=True)
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
@@ -278,17 +257,10 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=None)
 
-    # multi-gpu evaluate
-    if args.n_gpu > 1:
-        model = torch.nn.DataParallel(model)
-
-    # Eval!
-    logger.info("***** Running evaluation {} *****".format(prefix))
-    logger.info("  Num examples = %d", len(eval_dataset))
-    logger.info("  Batch size = %d", args.eval_batch_size)
     eval_lm_loss = 0.0
     eval_mc_loss = 0.0
     nb_eval_steps = 0
+    nb_mc_eval_steps = 0
     model.eval()
 
     for batch_lm, mc_labels in tqdm(eval_dataloader, desc="Evaluating"):
@@ -299,16 +271,16 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 
         with torch.no_grad():
             outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
-            lm_loss = outputs[0] * torch.tensor(mc_labels == 4)
+            lm_loss = torch.where(mc_labels == 3, outputs[0], torch.zeros_like(outputs[0]))
             mc_loss = outputs[1]
-            eval_lm_loss += lm_loss.mean().item()
             eval_mc_loss += mc_loss.mean().item()
-        nb_eval_steps += 1
+            nb_eval_steps += 1
+            if lm_loss.mean().item() != 0.0:
+                eval_lm_loss += lm_loss.mean().item()
+                nb_mc_eval_steps += 1
 
-    perplexity = torch.exp(torch.tensor(eval_lm_loss / nb_eval_steps))
-
-    result = {"perplexity": perplexity.item(),
-              "lm_loss": eval_lm_loss / nb_eval_steps,
+    result = {"perplexity": 2 ** torch.tensor(eval_lm_loss / nb_mc_eval_steps).mean().item(),
+              "lm_loss": eval_lm_loss / nb_mc_eval_steps,
               "mc_loss": eval_mc_loss / nb_eval_steps}
 
     output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
@@ -425,9 +397,6 @@ def main(argv=sys.argv):
         "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
     )
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
-
-    parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
-    parser.add_argument("--server_port", type=str, default="", help="For distant debugging.")
     args = parser.parse_args(argv)
 
     if args.should_continue:
@@ -449,20 +418,10 @@ def main(argv=sys.argv):
             )
         )
 
-    # Setup distant debugging if needed
-    if args.server_ip and args.server_port:
-        # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
-        import ptvsd
-
-        print("Waiting for debugger attach")
-        ptvsd.enable_attach(address=(args.server_ip, args.server_port), redirect_output=True)
-        ptvsd.wait_for_attach()
-
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     args.n_gpu = torch.cuda.device_count()
     args.device = device
 
-    # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -474,7 +433,6 @@ def main(argv=sys.argv):
         args.n_gpu
     )
 
-    # Set seed
     set_seed(args)
     config_class, model_class, template_model, tokenizer_class = MODEL_CLASSES[args.model_type]
 
@@ -497,7 +455,7 @@ def main(argv=sys.argv):
 
     if args.block_size <= 0:
         args.block_size = tokenizer.max_len
-        # Our input block size will be the max possible for the model
+
     else:
         args.block_size = min(args.block_size, tokenizer.max_len)
 
@@ -521,59 +479,25 @@ def main(argv=sys.argv):
     logger.info("Training/evaluation parameters %s", args)
 
     tokenizer.add_special_tokens({'sep_token': '[SEP]', 'cls_token': '[CLS]'})
-    model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
-    # Training
-    if args.do_train:
-        args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
-        if args.train_tsv is not None:
-            from cs272_project.dataset.tsv_dataset import TSVDataset
-            train_dataset = TSVDataset(tokenizer, tsv_file=args.train_tsv, batch_size=args.train_batch_size,
-                                       block_size=args.block_size)
-        else:
-            train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, batch_size=args.train_batch_size)
-        try:
-            global_step, tr_loss = train(args, train_dataset, model, tokenizer)
-        except RuntimeError:
-            torch.cuda.empty_cache()
-            raise
-        logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
+    model.resize_token_embeddings(len(tokenizer))
 
-    if args.do_train:
-        # Create output directory if needed
-        os.makedirs(args.output_dir, exist_ok=True)
-        logger.info("Saving model checkpoint to %s", args.output_dir)
-        # Save a trained model, configuration and tokenizer using `save_pretrained()`.
-        # They can then be reloaded using `from_pretrained()`
-        model_to_save = model
-        model_to_save.save_pretrained(args.output_dir)
-        tokenizer.save_pretrained(args.output_dir)
+    args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
+    if args.train_tsv is not None:
+        from cs272_project.dataset.tsv_dataset import TSVDataset
+        train_dataset = TSVDataset(tokenizer, tsv_file=args.train_tsv, batch_size=args.train_batch_size,
+                                   block_size=args.block_size)
+    else:
+        train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, batch_size=args.train_batch_size)
+    try:
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+    except RuntimeError:
+        torch.cuda.empty_cache()
+        raise
+    logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
+    os.makedirs(args.output_dir, exist_ok=True)
+    logger.info("Saving model checkpoint to %s", args.output_dir)
 
-        # Good practice: save your training arguments together with the trained model
-        torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
-
-        # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
-        tokenizer = tokenizer_class.from_pretrained(args.output_dir)
-        model.to(args.device)
-
-    # Evaluation
-    results = {}
-    if args.do_eval:
-        checkpoints = [args.output_dir]
-        if args.eval_all_checkpoints:
-            checkpoints = list(
-                os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True))
-            )
-            logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
-        logger.info("Evaluate the following checkpoints: %s", checkpoints)
-        for checkpoint in checkpoints:
-            global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-            prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
-
-            model = model_class.from_pretrained(checkpoint)
-            model.to(args.device)
-            result = evaluate(args, model, tokenizer, prefix=prefix)
-            result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
-            results.update(result)
-
-    return results
+    model_to_save = model
+    model_to_save.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
+    torch.save(args, os.path.join(args.output_dir, "training_args.bin"))

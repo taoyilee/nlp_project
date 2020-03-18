@@ -30,17 +30,15 @@ def fine_tune(config, model="gpt2", batch_size=4, train_tsv=None, dev_tsv=None):
               "--model_type", model,
               "--train_tsv", train_tsv,
               "--dev_tsv", dev_tsv,
+              "--num_train_epochs", "10",
               "--model_name_or_path", model,
-              "--do_train",
               "--per_gpu_train_batch_size", f"{batch_size}",
-              "--per_gpu_eval_batch_size", f"{batch_size}",
-              "--do_eval"])
+              "--per_gpu_eval_batch_size", f"{batch_size}"])
     else:
         main(["--output_dir", config.default.output_dir,
               "--model_type", model,
               "--overwrite_output_dir",
+              "--num_train_epochs", "10",
               "--model_name_or_path", model,
-              "--do_train",
               "--per_gpu_train_batch_size", f"{batch_size}",
-              "--per_gpu_eval_batch_size", f"{batch_size}",
-              "--do_eval"])
+              "--per_gpu_eval_batch_size", f"{batch_size}"])
