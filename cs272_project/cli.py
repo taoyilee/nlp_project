@@ -70,6 +70,13 @@ def normalize_wikiqa(infile, outfile):
     from cs272_project.dataset.normalize_wikiqa import normalize_wikiqa
     normalize_wikiqa(infile, outfile)
 
+@cli.command()
+@click.option('--ckpt-dir', help='Checkpoint directory')
+@click.option('--eval-tsv', help='Evaluation dataset')
+def eval_map_mrr(ckpt_dir, eval_tsv):
+    from cs272_project.eval_model import eval_model
+    eval_model(ckpt_dir, eval_tsv)
+
 
 @cli.command()
 @click.option('--tensorboard-dir', help='tensorboard log dir')
