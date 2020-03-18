@@ -35,22 +35,22 @@ class AS2HeadModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         mlp_neurons = 1024
-        self.linear1 = nn.Linear(config.hidden_size, mlp_neurons)
-        self.linear2 = nn.Linear(mlp_neurons, 1)
+        self.linear1 = nn.Linear(config.n_embd, mlp_neurons)
+        self.linear2 = nn.Linear(mlp_neurons, 4)
         self.dropout = nn.Dropout(config.resid_pdrop)
         self.ln_1 = nn.LayerNorm(mlp_neurons, eps=config.layer_norm_epsilon)
 
         self.act = F.relu
-        self.act_out = torch.sigmoid
+        self.act_out = torch.softmax
 
     def forward(self, hidden_states, cls_index=None):
-        output = hidden_states[:, -1, :]
+        output = hidden_states
         output = self.linear1(output)
         output = self.act(output)
         output = self.ln_1(output)
         output = self.dropout(output)
         output = self.linear2(output)
-        output = self.act_out(output)
+        output = self.act_out(output, dim=-1)
         return output
 
 
@@ -94,7 +94,7 @@ class GPT2TANDAModel(GPT2PreTrainedModel):
         hidden_states = transformer_outputs[0]
 
         lm_logits = self.lm_head(hidden_states)
-        mc_logits = self.as2_head(hidden_states)
+        mc_logits = self.as2_head(hidden_states[:, -1, :])
 
         outputs = (lm_logits, mc_logits) + transformer_outputs[1:]
         if mc_labels is not None:

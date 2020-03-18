@@ -63,7 +63,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-from cs272_project.big_query_dataset import BigQueryDataset
+from cs272_project.dataset.load import load_and_cache_examples
 from cs272_project.model import GPT2TANDAModel
 
 logger = logging.getLogger(__name__)
@@ -74,19 +74,6 @@ MODEL_CLASSES = {
     "gpt2-large": (GPT2Config, GPT2TANDAModel, GPT2LMHeadModel, GPT2Tokenizer),
     "gpt2-xl": (GPT2Config, GPT2TANDAModel, GPT2LMHeadModel, GPT2Tokenizer),
 }
-
-
-def load_and_cache_examples(args, tokenizer, project_name="focus-empire-270208", evaluate=False, batch_size=32):
-    if evaluate:
-        return BigQueryDataset(tokenizer, project_name=project_name,
-                               table_name="asnq.dev",
-                               batch_size=batch_size,
-                               block_size=args.block_size)
-    else:  # train
-        return BigQueryDataset(tokenizer, project_name=project_name,
-                               table_name="asnq.train",
-                               batch_size=batch_size,
-                               block_size=args.block_size)
 
 
 def set_seed(args):
@@ -221,13 +208,8 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             mc_labels = mc_labels.to(args.device)
             model.train()
             outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
-            loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
-            if args.n_gpu > 1:
-                loss = loss.mean()  # mean() to average on multi-gpu parallel training
-            if args.gradient_accumulation_steps > 1:
-                loss = loss / args.gradient_accumulation_steps
-
+            loss = outputs[0] * torch.tensor(mc_labels == 4) + outputs[1]  # LM_LOSS + MC_LOSS
             loss.backward()
 
             tr_loss += loss.item()
@@ -271,6 +253,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
+
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
@@ -285,7 +268,13 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
     eval_output_dir = args.output_dir
     os.makedirs(eval_output_dir, exist_ok=True)
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
-    eval_dataset = load_and_cache_examples(args, tokenizer, evaluate=True, batch_size=args.eval_batch_size)
+    if args.dev_tsv is not None:
+        from cs272_project.dataset.tsv_dataset import TSVDataset
+        eval_dataset = TSVDataset(tokenizer, tsv_file=args.dev_tsv, batch_size=args.eval_batch_size,
+                                  block_size=args.block_size)
+    else:
+        eval_dataset = load_and_cache_examples(args, tokenizer, evaluate=True, batch_size=args.eval_batch_size)
+
     eval_sampler = SequentialSampler(eval_dataset)
     eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=None)
 
@@ -297,25 +286,30 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
     logger.info("***** Running evaluation {} *****".format(prefix))
     logger.info("  Num examples = %d", len(eval_dataset))
     logger.info("  Batch size = %d", args.eval_batch_size)
-    eval_loss = 0.0
+    eval_lm_loss = 0.0
+    eval_mc_loss = 0.0
     nb_eval_steps = 0
     model.eval()
 
-    for batch in tqdm(eval_dataloader, desc="Evaluating"):
-        inputs, labels = batch, batch
+    for batch_lm, mc_labels in tqdm(eval_dataloader, desc="Evaluating"):
+        inputs, lm_labels = batch_lm, batch_lm
         inputs = inputs.to(args.device)
-        labels = labels.to(args.device)
+        lm_labels = lm_labels.to(args.device)
+        mc_labels = mc_labels.to(args.device)
 
         with torch.no_grad():
-            outputs = model(inputs, labels=labels)
-            lm_loss = outputs[0]
-            eval_loss += lm_loss.mean().item()
+            outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
+            lm_loss = outputs[0] * torch.tensor(mc_labels == 4)
+            mc_loss = outputs[1]
+            eval_lm_loss += lm_loss.mean().item()
+            eval_mc_loss += mc_loss.mean().item()
         nb_eval_steps += 1
 
-    eval_loss = eval_loss / nb_eval_steps
-    perplexity = torch.exp(torch.tensor(eval_loss))
+    perplexity = torch.exp(torch.tensor(eval_lm_loss / nb_eval_steps))
 
-    result = {"perplexity": perplexity}
+    result = {"perplexity": perplexity.item(),
+              "lm_loss": eval_lm_loss / nb_eval_steps,
+              "mc_loss": eval_mc_loss / nb_eval_steps}
 
     output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
     with open(output_eval_file, "w") as writer:
@@ -339,6 +333,9 @@ def main(argv=sys.argv):
     parser.add_argument(
         "--model_type", type=str, required=True, help="The model architecture to be trained or fine-tuned.",
     )
+
+    parser.add_argument("--train_tsv", type=str, required=False)
+    parser.add_argument("--dev_tsv", type=str, required=False)
 
     parser.add_argument(
         "--should_continue", action="store_true", help="Whether to continue from latest checkpoint in output_dir"
@@ -397,7 +394,7 @@ def main(argv=sys.argv):
     parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
-        "--num_train_epochs", default=1.0, type=float, help="Total number of training epochs to perform."
+        "--num_train_epochs", default=5, type=float, help="Total number of training epochs to perform."
     )
     parser.add_argument(
         "--max_steps",
@@ -528,7 +525,12 @@ def main(argv=sys.argv):
     # Training
     if args.do_train:
         args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
-        train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, batch_size=args.train_batch_size)
+        if args.train_tsv is not None:
+            from cs272_project.dataset.tsv_dataset import TSVDataset
+            train_dataset = TSVDataset(tokenizer, tsv_file=args.train_tsv, batch_size=args.train_batch_size,
+                                       block_size=args.block_size)
+        else:
+            train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, batch_size=args.train_batch_size)
         try:
             global_step, tr_loss = train(args, train_dataset, model, tokenizer)
         except RuntimeError:

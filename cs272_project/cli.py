@@ -55,12 +55,24 @@ def cli(debug, config=None):
 
 
 @cli.command()  # @cli, not @click!
+@click.option('--dataset', help='Splitted dataset location')
+@click.option('--outdir', help='Output directory')
+@click.option('--samples-each-category', default=100)
+def subsample(dataset, outdir, samples_each_category=100):
+    from cs272_project.dataset.subsample import asnq_subsampler, dataset_split
+    tsv_file = asnq_subsampler(dataset, outdir, samples_each_category)
+    dataset_split(tsv_file, training_ratio=0.8, dev_ratio=0.1)
+
+
+@cli.command()  # @cli, not @click!
+@click.option('--train-tsv', help='TSV formatted training dataset')
+@click.option('--dev-tsv', help='TSV formatted development dataset')
 @click.option('--model', default="gpt2", help='Model Name',
               type=click.Choice(['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], case_sensitive=False))
-@click.option('--batch-size', default=4, help='Batch Size')
-def fine_tune(model="gpt2", batch_size=4):
+@click.option('--batch-size', default=1, help='Batch Size')
+def fine_tune(train_tsv=None, dev_tsv=None,  model="gpt2", batch_size=4):
     from cs272_project.api import fine_tune
-    fine_tune(CONFIG, model, batch_size=batch_size)
+    fine_tune(CONFIG, model, batch_size=batch_size, train_tsv=train_tsv, dev_tsv=dev_tsv)
 
 
 @cli.command()  # @cli, not @click!

@@ -20,13 +20,19 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
-from transformers import GPT2Tokenizer
-
 from cs272_project.dataset.big_query_dataset import BigQueryDataset
 
-if __name__ == "__main__":
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    train_dataset = BigQueryDataset(tokenizer, table_name="asnq.train")
-    dev_dataset = BigQueryDataset(tokenizer, table_name="asnq.dev")
-    print(train_dataset[0])
-    print(train_dataset[len(train_dataset) - 1])
+
+
+def load_and_cache_examples(args, tokenizer, project_name="focus-empire-270208", evaluate=False, batch_size=32):
+    if evaluate:
+        return BigQueryDataset(tokenizer, project_name=project_name,
+                               table_name="asnq.dev",
+                               batch_size=batch_size,
+                               block_size=args.block_size)
+    else:  # train
+        return BigQueryDataset(tokenizer, project_name=project_name,
+                               table_name="asnq.train",
+                               batch_size=batch_size,
+                               block_size=args.block_size)
+

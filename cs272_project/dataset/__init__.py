@@ -20,13 +20,3 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
-from transformers import GPT2Tokenizer
-
-from cs272_project.dataset.big_query_dataset import BigQueryDataset
-
-if __name__ == "__main__":
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    train_dataset = BigQueryDataset(tokenizer, table_name="asnq.train")
-    dev_dataset = BigQueryDataset(tokenizer, table_name="asnq.dev")
-    print(train_dataset[0])
-    print(train_dataset[len(train_dataset) - 1])

@@ -21,44 +21,36 @@
 #  SOFTWARE.
 import math
 
+import numpy as np
+import pandas as pd
 import torch
-from google.cloud import bigquery
+from sklearn.preprocessing import OneHotEncoder
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
 
-class BigQueryDataset(Dataset):
+class TSVDataset(Dataset):
     _len = None
 
-    def __init__(self, tokenizer: PreTrainedTokenizer, project_name="focus-empire-270208", table_name="asnq.train",
+    def __init__(self, tokenizer: PreTrainedTokenizer, tsv_file,
                  batch_size=32, block_size=512):
-        print(f"Creating features from table {project_name}.{table_name} batch_size = {batch_size}")
+        print(f"Creating features from tsv_file {tsv_file}")
 
         self.tokenizer = tokenizer
-        self.project_name = project_name
-        self.table_name = table_name
-        self.client = bigquery.Client(project=self.project_name)
+        self._df = pd.read_csv(tsv_file, delimiter="\t", dtype={"category": int}, index_col=0)
         self.block_size = block_size
+        self._ohe = OneHotEncoder(sparse=False)
+        self._ohe.fit(self._df["category"].to_numpy().reshape(-1, 1))
         self.batch_size = batch_size
 
     def __len__(self):
         if self._len is None:
-            QUERY = ('SELECT '
-                     'COUNT(*) as total_rows '
-                     f'FROM `{self.table_name}`')
-            query_job = self.client.query(QUERY)
-            rows = query_job.result().to_dataframe()
-            self._len = math.ceil(rows.loc[0, "total_rows"] / self.batch_size)
+            self._len = math.ceil(len(self._df) / self.batch_size)
         return self._len
 
     def __getitem__(self, i):
-        QUERY = ('SELECT * '
-                 f'FROM `{self.table_name}` '
-                 f'LIMIT {self.batch_size} OFFSET {i * self.batch_size}')
-        query_job = self.client.query(QUERY)
-
-        rows = query_job.result().to_dataframe()
+        rows = self._df.iloc[i * self.batch_size:(i + 1) * self.batch_size]
 
         def format_string(r):
             return f"{r[1]['question']} [SEP] {r[1]['context']} [CLS]"
@@ -71,5 +63,6 @@ class BigQueryDataset(Dataset):
 
         inputs = list(map(format_string, rows.iterrows()))
         inputs = list(map(tokenize, inputs))
-
-        return collate(inputs), torch.tensor(rows['label'] == 4, dtype=torch.long)
+        # label_tensor = torch.tensor(self._ohe.transform(rows['category'].to_numpy().reshape(-1, 1)), dtype=torch.long)
+        label_tensor = torch.tensor(rows['category'].to_numpy() - 1, dtype=torch.long)
+        return collate(inputs), label_tensor
