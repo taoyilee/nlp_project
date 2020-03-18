@@ -178,7 +178,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             mc_labels = mc_labels.to(args.device)
             model.train()
             outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
-            lm_loss = torch.where(mc_labels == 3, outputs[0], torch.zeros_like(outputs[0]))
+            lm_loss = torch.where(mc_labels == 1, outputs[0], torch.zeros_like(outputs[0]))
 
             mc_loss = outputs[1]
             loss = lm_loss + mc_loss
@@ -280,7 +280,7 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
 
         with torch.no_grad():
             outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
-            lm_loss = torch.where(mc_labels == 3, outputs[0], torch.zeros_like(outputs[0]))
+            lm_loss = torch.where(mc_labels == 1, outputs[0], torch.zeros_like(outputs[0]))
             mc_loss = outputs[1]
             eval_mc_loss += mc_loss.mean().item()
             nb_mc_eval_steps += 1

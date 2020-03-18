@@ -36,7 +36,7 @@ class AS2HeadModel(nn.Module):
         super().__init__()
         mlp_neurons = 1024
         self.linear1 = nn.Linear(config.n_embd, mlp_neurons)
-        self.linear2 = nn.Linear(mlp_neurons, 4)
+        self.linear2 = nn.Linear(mlp_neurons, 2)
         self.dropout = nn.Dropout(config.resid_pdrop)
         self.ln_1 = nn.LayerNorm(mlp_neurons, eps=config.layer_norm_epsilon)
 
