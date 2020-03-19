@@ -20,7 +20,11 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from sklearn.metrics import average_precision_score
+from sklearn.metrics import precision_score, recall_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -34,28 +38,61 @@ def eval_model(checkpoint_dir, eval_tsv, block_size=512):
     print(f"Reading from {eval_tsv}")
 
     tsv_df = pd.read_csv(eval_tsv, sep="\t", header=0, index_col=0)
-    dataset = DFDataset(tokenizer, tsv_file=eval_tsv, batch_size=1, max_records=None)
-    data_loader = DataLoader(dataset, batch_size=None)
-    t = tqdm(data_loader, desc="Prediction")
-    i = 0
-    j = 0
-    max_samples = 10000
-    for step, (batch_lm, _) in enumerate(t):
-        try:
-            if not pd.isna(tsv_df.iloc[step]["mc_logits"]):
-                t.set_description("(SKIP)")
-                j += 1
-                continue
-        except KeyError:
-            pass
+    unique_queries = tsv_df["question"].unique()
+    reciprocal_rank = []
+    for qi, q in enumerate(unique_queries[:15]):
+        print(f"query: {q}")
+        query_candidates = tsv_df.loc[tsv_df["question"] == q].copy()
 
-        if i + j < max_samples or tsv_df.at[step, "category"] == 4:
+        dataset = DFDataset(tokenizer, query_candidates, batch_size=1, max_records=None)
+        data_loader = DataLoader(dataset, batch_size=None)
+        t = tqdm(data_loader, desc="Prediction")
+
+        for step, (batch_lm, _) in enumerate(t):
+            try:
+                if not pd.isna(query_candidates.iloc[step]["mc_logits"]):
+                    t.set_description("(SKIP)")
+                    continue
+            except KeyError:
+                pass
             t.set_description("(EVAL)")
-            i += 1
             mc_logits = model(batch_lm)[1]
-            tsv_df.at[step, "mc_logits"] = mc_logits[0, 1].item()
-        else:
-            t.set_description("(SKIP)")
-        if i % 1000 == 0:
-            tsv_df.to_csv(eval_tsv, sep="\t", columns=["question", "context", "category", "mc_logits"])
+            query_candidates.at[query_candidates.index[step], 'mc_logits'] = mc_logits[0, 1].item()
+        temp = np.argsort(-query_candidates["mc_logits"])
+        query_candidates.at[query_candidates.index[temp], "rank"] = np.arange(1, len(query_candidates) + 1)
+        rank = query_candidates.loc[query_candidates['category'] == 4, "rank"].min()
+        if not np.isnan(rank):
+            reciprocal_rank.append(1 / rank)
+
+        tsv_df.update(query_candidates)
     tsv_df.to_csv(eval_tsv, sep="\t", columns=["question", "context", "category", "mc_logits"])
+
+    print(f"MRR: {np.mean(reciprocal_rank):.3f}")
+    print(len( tsv_df.loc[~pd.isna(tsv_df["mc_logits"])]))
+    query_candidates = tsv_df.loc[~pd.isna(tsv_df["mc_logits"])]
+    y_true = (query_candidates['category'] == 4).astype(int).to_numpy()
+    y_scores = query_candidates['mc_logits'].to_numpy()
+    thres = np.linspace(0, 1, 20)
+    precision = [precision_score(y_true, y_scores > tt, zero_division=1) for tt in thres]
+    recall = [recall_score(y_true, y_scores > tt) for tt in thres]
+    ap = average_precision_score(y_true, y_scores)
+    plt.figure(figsize=(5, 4))
+    # plt.subplot(1, 2, 1)
+    plt.plot(recall, precision, label=f"AP={ap:.3f}", marker="o")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.grid()
+    plt.xlim([0, 1])
+    plt.ylim([0, 0.02])
+    plt.legend()
+    # plt.subplot(1, 2, 2)
+    # plt.plot(thres, precision)
+    # plt.xlabel("Threshold")
+    # plt.xlim([0, 1])
+    # plt.ylim([0, 1])
+    # plt.grid()
+    plt.tight_layout()
+    output_fig = f"/home/tylee/sdb/nlp_workspace/plots/pr/pr_curve.png"
+    plt.savefig(output_fig)
+    plt.close()
+    print(f"MAP: {ap:.3f}")

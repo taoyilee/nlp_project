@@ -169,6 +169,9 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
     set_seed(args)
     lm_losses = []
     mc_losses = []
+    mc_logitsp, mc_logitsn = [], []
+    total_samples = 0
+    pos_samples = 0
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", dynamic_ncols=True)
         for step, (batch_lm, mc_labels) in enumerate(epoch_iterator):
@@ -181,7 +184,18 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             lm_loss = torch.where(mc_labels == 1, outputs[0], torch.zeros_like(outputs[0]))
 
             mc_loss = outputs[1]
+            if torch.any(mc_labels == 1):
+                if len(mc_logitsp) > 100:
+                    mc_logitsp.pop(0)
+                mc_logitsp.append(outputs[3][0, 1].squeeze().item())
+                pos_samples += 1
+            else:
+                if len(mc_logitsn) > 100:
+                    mc_logitsn.pop(0)
+                mc_logitsn.append(outputs[3][0, 1].squeeze().item())
+            total_samples += 1
             loss = lm_loss + mc_loss
+
             loss.backward()
 
             if lm_loss.item() != 0.0:
@@ -199,7 +213,9 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
 
             train_info = f"#{step:3d} lm_loss: {train_results['lm_loss']:6.4f} " \
                          f"mc_loss: {train_results['mc_loss']:6.4f}" \
-                         f" ppl: {train_results['ppl']:6.2f}"
+                         f" ppl: {train_results['ppl']:6.2f}" \
+                         f" mc+/-: {np.mean(mc_logitsp):3.2f}/{np.mean(mc_logitsn):3.2f}" \
+                         f" {100 * pos_samples / total_samples:.1f}"
             epoch_iterator.set_description(train_info)
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
@@ -210,9 +226,9 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                 global_step += 1
 
                 if args.logging_steps > 0 and global_step % args.logging_steps == 0:
-                    results = evaluate(args, model, tokenizer)
-                    for key, value in results.items():
-                        tb_writer.add_scalar("eval_{}".format(key), value, global_step)
+                    # results = evaluate(args, model, tokenizer)
+                    # for key, value in results.items():
+                    #     tb_writer.add_scalar("eval_{}".format(key), value, global_step)
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
                     logging_loss = tr_loss
@@ -238,9 +254,7 @@ def save_checkpoint(args, global_step, model, optimizer, scheduler, tokenizer):
     checkpoint_prefix = "checkpoint"
     output_dir = os.path.join(args.output_dir, "{}-{}".format(checkpoint_prefix, global_step))
     os.makedirs(output_dir, exist_ok=True)
-    model_to_save = (
-        model.module if hasattr(model, "module") else model
-    )
+    model_to_save = (model.module if hasattr(model, "module") else model)
     model_to_save.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
     torch.save(args, os.path.join(output_dir, "training_args.bin"))
@@ -457,6 +471,7 @@ def main(argv=sys.argv):
         config = config_class.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     else:
         config = config_class()
+    config.class_weights = [1.0, 1.0]
 
     if args.tokenizer_name:
         tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name, cache_dir=args.cache_dir)

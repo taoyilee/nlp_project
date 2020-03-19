@@ -24,7 +24,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss,MSELoss
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,7 @@ class AS2HeadModel(nn.Module):
         output = self.ln_1(output)
         output = self.dropout(output)
         output = self.linear2(output)
+
         output = self.act_out(output, dim=-1)
         return output
 
@@ -64,6 +65,8 @@ class GPT2TANDAModel(GPT2PreTrainedModel):
 
         self.init_weights()
         self.loss_fct = CrossEntropyLoss()
+        # self.loss_fct_as2 = CrossEntropyLoss(weight=torch.tensor(config.class_weights)                                             )
+        self.loss_fct_as2 = MSELoss()
 
     def get_output_embeddings(self):
         return self.lm_head
@@ -98,11 +101,11 @@ class GPT2TANDAModel(GPT2PreTrainedModel):
 
         outputs = (lm_logits, mc_logits) + transformer_outputs[1:]
         if mc_labels is not None:
-            loss = self.loss_fct(mc_logits, mc_labels)
+            loss = self.loss_fct_as2(mc_logits[:,1], mc_labels.float())
             outputs = (loss,) + outputs
         if lm_labels is not None:
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = lm_labels[..., 1:].contiguous()
+            shift_logits = lm_logits[..., :-2, :].contiguous()
+            shift_labels = lm_labels[..., 1:-1].contiguous()
 
             loss = self.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             outputs = (loss,) + outputs
