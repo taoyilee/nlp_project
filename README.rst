@@ -44,6 +44,7 @@ Following the steps below to setup training environment
     # write configuration file to a working directory
     cs272_project_cli write-config --outfile /home/tylee/PycharmProjects/nlp_workspace
 
+
 Development
 ======================
 First of all, please fork the project if you are interested in extending its functionalities.
@@ -54,6 +55,17 @@ After that, you may clone the repository with:
     git clone git@github.com:<user_name>/nlp_project.git
 
 Pull requests welcome!
+
+Fine tuning with TSV data source
+-----------------------------------
+.. code-block:: bash
+
+    python cs272_project/cli.py --debug  \
+        --config <your_config_location>/config.ini \
+        fine-tune \
+        --model gpt2 \
+        --train-tsv <your_dataset_location>/asnq/data/subsampled/train.tsv \
+        --dev-tsv <your_dataset_location>/asnq/data/dev.tsv
 
 Dependencies
 ======================
