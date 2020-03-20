@@ -91,7 +91,7 @@ def report(tensorboard_dir,plot_dir):
 @click.option('--dev-tsv', help='TSV formatted development dataset')
 @click.option('--model', default="gpt2", help='Model Name',
               type=click.Choice(['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], case_sensitive=False))
-@click.option('--batch-size', default=1, help='Batch Size')
+@click.option('--batch-size', default=2, help='Batch Size')
 def fine_tune(train_tsv=None, dev_tsv=None,  model="gpt2", batch_size=4):
     from cs272_project.api import fine_tune
     fine_tune(CONFIG, model, batch_size=batch_size, train_tsv=train_tsv, dev_tsv=dev_tsv)

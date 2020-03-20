@@ -181,7 +181,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             mc_labels = mc_labels.to(args.device)
             model.train()
             outputs = model(inputs, lm_labels=lm_labels, mc_labels=mc_labels)
-            lm_loss = torch.where(mc_labels == 1, outputs[0], torch.zeros_like(outputs[0]))
+            lm_loss = torch.where(mc_labels == 1, outputs[0], torch.zeros_like(outputs[0])).mean()
 
             mc_loss = outputs[1]
             if torch.any(mc_labels == 1):
@@ -195,7 +195,6 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
                 mc_logitsn.append(outputs[3][0, 1].squeeze().item())
             total_samples += 1
             loss = lm_loss + mc_loss
-
             loss.backward()
 
             if lm_loss.item() != 0.0:
